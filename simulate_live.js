@@ -1,7 +1,9 @@
 const axios = require('axios');
 
 // CONFIGURATION
-const API_URL = 'http://localhost:5000/api/readings';
+// CONFIGURATION
+// const API_URL = 'http://localhost:5000/api/readings'; // Local
+const API_URL = 'https://backend-bsl.onrender.com/api/readings'; // Production (Render)
 const MAC_ADDRESS = "AA:BB:CC:DD:EE:FF"; // The MAC from your curl command
 const INTERVAL_MS = 3000; // Send every 3 seconds
 
