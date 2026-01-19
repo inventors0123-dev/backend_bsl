@@ -33,6 +33,12 @@ app.use('/api/users', require('./routes/users')); // Internal auth
 app.use('/api/alerts', auth, require('./routes/alerts'));
 app.use('/api/settings', auth, require('./routes/settings'));
 
+
+// Root Route
+app.get('/', (req, res) => {
+  res.send('API is running...');
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'IoT Dashboard API is running' });
