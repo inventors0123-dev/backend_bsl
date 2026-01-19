@@ -44,6 +44,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'IoT Dashboard API is running' });
 });
 
+// Root Route (for easy verification)
+app.get('/', (req, res) => {
+  res.send('IoT Dashboard Backend is Running 🚀. Use /api/health to check status.');
+});
+
 // External API Sync Status
 app.get('/api/sync/status', (req, res) => {
   res.json(externalApiSync.getStatus());
