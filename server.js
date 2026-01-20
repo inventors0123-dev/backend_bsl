@@ -33,41 +33,14 @@ app.use('/api/users', require('./routes/users')); // Internal auth
 app.use('/api/alerts', auth, require('./routes/alerts'));
 app.use('/api/settings', auth, require('./routes/settings'));
 
-
 // Root Route
 app.get('/', (req, res) => {
-  res.send('API is running...');
+  res.send('IoT Dashboard Backend is Running 🚀. Use /api/health to check status.');
 });
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'IoT Dashboard API is running' });
-});
-
-// Root Route (for easy verification)
-app.get('/', (req, res) => {
-  res.send('IoT Dashboard Backend is Running 🚀. Use /api/health to check status.');
-});
-
-// External API Sync Status
-app.get('/api/sync/status', (req, res) => {
-  res.json(externalApiSync.getStatus());
-});
-
-// Start/Stop External API Sync
-app.post('/api/sync/start', (req, res) => {
-  externalApiSync.start();
-  res.json({ message: 'External API sync started', status: externalApiSync.getStatus() });
-});
-
-app.post('/api/sync/stop', (req, res) => {
-  externalApiSync.stop();
-  res.json({ message: 'External API sync stopped', status: externalApiSync.getStatus() });
-});
-
-// Alert Generator Status & Control
-app.get('/api/alerts/generator/status', (req, res) => {
-  res.json(alertGenerator.getStatus());
 });
 
 app.post('/api/alerts/generator/start', (req, res) => {
@@ -116,9 +89,9 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/iot_dashb
       console.error('⚠️ User seeding error:', err);
     }
 
-    // External API Sync Service (disabled by default)
-    // console.log('\n🌐 Starting External API Sync...');
-    // externalApiSync.start();
+    // External API Sync Service (enabled for Hostinger)
+    console.log('\n🌐 Starting External API Sync (Connecting to Hostinger)...');
+    externalApiSync.start();
 
     // Start Alert Generator Service
     console.log('\n🚨 Starting Alert Generator Service...');
