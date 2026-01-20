@@ -9,7 +9,9 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/iot_dashb
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(async () => {
-    console.log('✅ Connected to MongoDB');
+    const dbHost = mongoose.connection.host;
+    console.log(`✅ Connected to MongoDB at: ${dbHost}`);
+    console.log(`   (URI: ${process.env.MONGODB_URI ? 'Defined in env' : 'Defaulting to localhost'})`);
 
     try {
         // 1. Ensure Device Exists
