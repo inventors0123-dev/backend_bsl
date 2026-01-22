@@ -21,6 +21,13 @@ router.put('/profile', auth, async (req, res) => {
         if (!user) return res.status(404).json({ msg: 'User not found' });
 
         if (req.body.name) user.name = req.body.name;
+        if (req.body.email && req.body.email !== user.email) {
+            let emailExists = await User.findOne({ email: req.body.email });
+            if (emailExists) {
+                return res.status(400).json({ error: 'Email already in use' });
+            }
+            user.email = req.body.email;
+        }
         if (req.body.preferences) {
             user.preferences = { ...user.preferences, ...req.body.preferences };
         }

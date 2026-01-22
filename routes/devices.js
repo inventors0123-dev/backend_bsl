@@ -13,6 +13,7 @@ router.get('/', async (req, res) => {
       devices.map(async (device) => {
         const readingCount = await DeviceParameter.countDocuments({ device_id: device._id });
         const macCount = await DeviceMacAddress.countDocuments({ device_id: device._id });
+        const macAddresses = await DeviceMacAddress.find({ device_id: device._id }).select('mac_address');
         const lastReading = await DeviceParameter.findOne({ device_id: device._id })
           .sort({ reading_time: -1 })
           .select('reading_time');
@@ -21,6 +22,7 @@ router.get('/', async (req, res) => {
           ...device.toObject(),
           reading_count: readingCount,
           mac_count: macCount,
+          mac_addresses: macAddresses,
           last_reading: lastReading?.reading_time || null
         };
       })

@@ -89,9 +89,10 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/iot_dashb
       console.error('⚠️ User seeding error:', err);
     }
 
-    // External API Sync Service (enabled for Hostinger)
+    // External API Sync Service (enabled with new clean API)
     console.log('\n🌐 Starting External API Sync (Connecting to Hostinger)...');
     externalApiSync.start();
+
 
     // Start Alert Generator Service
     console.log('\n🚨 Starting Alert Generator Service...');

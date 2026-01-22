@@ -43,8 +43,8 @@ router.get('/recent-readings', async (req, res) => {
     const readings = await DeviceParameter.find()
       .populate('device_id', 'name location')
       .sort({ reading_time: -1 })
-      .limit(limit)
-      .select('device_id reading_time r_voltage r_current r_active_power frequency temperature');
+      .limit(limit);
+    // Removed .select() to return ALL fields including y_voltage, y_current, y_active_power, b_voltage, b_current, b_active_power
 
     res.json(readings);
   } catch (error) {
@@ -184,14 +184,14 @@ router.get('/chart-data', async (req, res) => {
 
       res.json(devicePower);
     } else if (type === 'voltage-trends') {
-      // Voltage trends (last 6 hours, 30-minute intervals)
-      const sixHoursAgo = new Date();
-      sixHoursAgo.setHours(sixHoursAgo.getHours() - 6);
+      // Voltage trends (last 24 hours, 1-hour intervals)
+      const oneDayAgo = new Date();
+      oneDayAgo.setHours(oneDayAgo.getHours() - 24);
 
       const voltageTrends = await DeviceParameter.aggregate([
         {
           $match: {
-            reading_time: { $gte: sixHoursAgo }
+            reading_time: { $gte: oneDayAgo }
           }
         },
         {
@@ -210,25 +210,18 @@ router.get('/chart-data', async (req, res) => {
             b_voltage: { $avg: '$b_voltage' }
           }
         },
-        {
-          $project: {
-            time: {
-              $concat: [
-                { $toString: '$_id.hour' },
-                ':',
-                { $cond: [{ $lt: ['$_id.minute', 10] }, '0', ''] },
-                { $toString: '$_id.minute' }
-              ]
-            },
-            r_voltage: 1,
-            y_voltage: 1,
-            b_voltage: 1
-          }
-        },
         { $sort: { '_id.hour': 1, '_id.minute': 1 } }
       ]);
 
-      res.json(voltageTrends);
+      // Format time in JavaScript for better compatibility
+      const formattedTrends = voltageTrends.map(item => ({
+        time: `${String(item._id.hour).padStart(2, '0')}:${String(item._id.minute).padStart(2, '0')}`,
+        r_voltage: item.r_voltage || 0,
+        y_voltage: item.y_voltage || 0,
+        b_voltage: item.b_voltage || 0
+      }));
+
+      res.json(formattedTrends);
     } else {
       res.status(400).json({ error: 'Invalid chart type' });
     }

@@ -4,6 +4,100 @@ const DeviceParameter = require('../models/DeviceParameter');
 const Device = require('../models/Device');
 const DeviceMacAddress = require('../models/DeviceMacAddress');
 const auth = require('../middleware/auth');
+const XLSX = require('xlsx');
+
+// Export all readings to Excel
+router.get('/export', auth, async (req, res) => {
+    console.log('📉 Export request received');
+    try {
+        // Fetch all readings with device info
+        const readings = await DeviceParameter.find()
+            .populate('device_id', 'name location')
+            .sort({ reading_time: -1 })
+            .lean();
+
+        console.log(`📉 Found ${readings.length} readings`);
+
+        // Transform data for Excel
+        const excelData = readings.map(reading => ({
+            'Device Name': reading.device_id?.name || 'Unknown',
+            'Location': reading.device_id?.location || 'N/A',
+            'Reading Time': reading.reading_time ? new Date(reading.reading_time).toLocaleString() : 'N/A',
+
+            // Phase R
+            'R Voltage (V)': reading.r_voltage || 0,
+            'R Current (A)': reading.r_current || 0,
+            'R Active Power (W)': reading.r_active_power || 0,
+            'R Reactive Power (VAR)': reading.r_reactive_power || 0,
+            'R Apparent Power (VA)': reading.r_apparent_power || 0,
+            'R Power Factor': reading.r_power_factor || 0,
+
+            // Phase Y
+            'Y Voltage (V)': reading.y_voltage || 0,
+            'Y Current (A)': reading.y_current || 0,
+            'Y Active Power (W)': reading.y_active_power || 0,
+            'Y Reactive Power (VAR)': reading.y_reactive_power || 0,
+            'Y Apparent Power (VA)': reading.y_apparent_power || 0,
+            'Y Power Factor': reading.y_power_factor || 0,
+
+            // Phase B
+            'B Voltage (V)': reading.b_voltage || 0,
+            'B Current (A)': reading.b_current || 0,
+            'B Active Power (W)': reading.b_active_power || 0,
+            'B Reactive Power (VAR)': reading.b_reactive_power || 0,
+            'B Apparent Power (VA)': reading.b_apparent_power || 0,
+            'B Power Factor': reading.b_power_factor || 0,
+
+            // System Parameters
+            'Frequency (Hz)': reading.frequency || 0,
+            'Total Energy (kWh)': reading.total_energy_kwh || 0,
+            'Total Energy (kVAh)': reading.total_energy_kvah || 0,
+            'Total Energy (kVARh)': reading.total_energy_kvarh || 0,
+            'Temperature (°C)': reading.temperature || 0,
+            'Humidity (%)': reading.humidity || 0,
+            'Neutral Current (A)': reading.neutral_current || 0,
+            'Voltage Unbalance (%)': reading.voltage_unbalance || 0,
+            'Current Unbalance (%)': reading.current_unbalance || 0,
+        }));
+
+        console.log('📉 Data transformed');
+
+        // Create workbook and worksheet
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(excelData);
+
+        console.log('📉 Worksheet created');
+
+        // Set column widths
+        const colWidths = [
+            { wch: 20 }, // Device Name
+            { wch: 15 }, // Location
+            { wch: 20 }, // Reading Time
+            ...Array(45).fill({ wch: 15 }) // All data columns
+        ];
+        ws['!cols'] = colWidths;
+
+        // Add worksheet to workbook
+        XLSX.utils.book_append_sheet(wb, ws, 'IoT Readings');
+
+        console.log('📉 Generating buffer...');
+
+        // Generate buffer
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        console.log(`📉 Buffer generated, size: ${buffer.length}`);
+
+        // Set headers for file download
+        res.setHeader('Content-Disposition', `attachment; filename=iot-readings-${new Date().toISOString().split('T')[0]}.xlsx`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        res.send(buffer);
+        console.log('📉 Response sent');
+    } catch (error) {
+        console.error('Export error full:', error);
+        res.status(500).json({ error: error.message, stack: error.stack });
+    }
+});
 
 // Get all readings with filters and pagination
 router.get('/', auth, async (req, res) => {
