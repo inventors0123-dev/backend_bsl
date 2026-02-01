@@ -114,7 +114,14 @@ class ExternalApiSync {
             return false;
         }
 
-        const readingTime = new Date(reading.reading_time);
+        // Fix: Treat incoming time as UTC by appending 'Z' if missing
+        // Incoming format is likely 'YYYY-MM-DD HH:mm:ss' (UTC)
+        let timeStr = reading.reading_time;
+        if (timeStr && !timeStr.endsWith('Z')) {
+            timeStr += 'Z';
+        }
+        const readingTime = new Date(timeStr);
+
         if (isNaN(readingTime.getTime())) {
             console.error(`❌ Invalid reading time: ${reading.reading_time}`);
             return false;
@@ -130,6 +137,9 @@ class ExternalApiSync {
         const deviceParameter = new DeviceParameter({
             device_id: macRecord.device_id._id,
             reading_time: readingTime,
+
+            // Log for debugging
+            // console.log(`Parsed Reading Time: ${readingTime.toISOString()} for MAC: ${macAddress}`);
 
             // Phase R
             r_voltage: reading.r_voltage,

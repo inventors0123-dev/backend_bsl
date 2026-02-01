@@ -7,28 +7,214 @@ const mongoose = require('mongoose');
 // Get dashboard statistics
 router.get('/dashboard', async (req, res) => {
   try {
-    const totalDevices = await Device.countDocuments();
-    const totalReadings = await DeviceParameter.countDocuments();
+    const period = req.query.period || 'today'; // 'today' or 'month'
 
-    // Recent readings (last 24 hours)
-    const oneDayAgo = new Date();
-    oneDayAgo.setHours(oneDayAgo.getHours() - 24);
-    const recentReadings = await DeviceParameter.countDocuments({
-      reading_time: { $gte: oneDayAgo }
-    });
+    let startOfPeriod = new Date();
 
-    // Active devices (with readings in last hour)
-    const oneHourAgo = new Date();
-    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-    const activeDevices = await DeviceParameter.distinct('device_id', {
-      reading_time: { $gte: oneHourAgo }
-    });
+    if (period === 'month') {
+      // Start of current month (1st day at 00:00:00)
+      startOfPeriod.setDate(1);
+      startOfPeriod.setHours(0, 0, 0, 0);
+    } else {
+      // Start of today (00:00:00)
+      startOfPeriod.setHours(0, 0, 0, 0);
+    }
+
+    // 1. kWh Today - Daily Energy Consumption
+    const dailyEnergyStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $group: {
+          _id: "$device_id",
+          minEnergy: { $min: "$total_energy_kwh" },
+          maxEnergy: { $max: "$total_energy_kwh" }
+        }
+      },
+      {
+        $project: {
+          consumption: { $subtract: ["$maxEnergy", "$minEnergy"] }
+        }
+      }
+    ]);
+    const kwhToday = dailyEnergyStats.reduce((acc, curr) => acc + (curr.consumption || 0), 0) / 1000;
+
+    // 2. Peak kW Today - Maximum total active power
+    const peakKwStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $project: {
+          total_kw: {
+            $divide: [
+              {
+                $add: [
+                  { $ifNull: ['$r_active_power', 0] },
+                  { $ifNull: ['$y_active_power', 0] },
+                  { $ifNull: ['$b_active_power', 0] }
+                ]
+              },
+              1000 // Convert W to kW
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          peak_kw: { $max: "$total_kw" }
+        }
+      }
+    ]);
+    const peakKwToday = peakKwStats.length > 0 ? peakKwStats[0].peak_kw : 0;
+
+    // 2b. Avg kW (today) - Average power consumption
+    // Avg_kW_day = AVERAGE(kW(t)) for today
+    // Simple average is fine because samples are every 10 sec
+    const avgKwStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $project: {
+          kw: {
+            $divide: [
+              {
+                $add: [
+                  { $ifNull: ['$r_active_power', 0] },
+                  { $ifNull: ['$y_active_power', 0] },
+                  { $ifNull: ['$b_active_power', 0] }
+                ]
+              },
+              1000
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avg_kw: { $avg: "$kw" }
+        }
+      }
+    ]);
+    const avgKwToday = avgKwStats.length > 0 ? avgKwStats[0].avg_kw : 0;
+
+    // 3. PF Today (system) - Weighted average power factor
+    // kW_total = (PR + PY + PB) / 1000
+    // kVA_total = (SR + SY + SB) / 1000
+    // PF = kW_total / kVA_total
+    const pfStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $project: {
+          kw_total: {
+            $divide: [
+              {
+                $add: [
+                  { $ifNull: ['$r_active_power', 0] },
+                  { $ifNull: ['$y_active_power', 0] },
+                  { $ifNull: ['$b_active_power', 0] }
+                ]
+              },
+              1000
+            ]
+          },
+          kva_total: {
+            $divide: [
+              {
+                $add: [
+                  { $ifNull: ['$r_apparent_power', 0] },
+                  { $ifNull: ['$y_apparent_power', 0] },
+                  { $ifNull: ['$b_apparent_power', 0] }
+                ]
+              },
+              1000
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          sum_kw: { $sum: "$kw_total" },
+          sum_kva: { $sum: "$kva_total" }
+        }
+      }
+    ]);
+    const pfToday = (pfStats.length > 0 && pfStats[0].sum_kva > 0)
+      ? (pfStats[0].sum_kw / pfStats[0].sum_kva)
+      : 0;
+
+    // 4. kVArh Today - Reactive energy
+    const kvarhStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $group: {
+          _id: "$device_id",
+          minKvarh: { $min: "$total_energy_kvarh" },
+          maxKvarh: { $max: "$total_energy_kvarh" }
+        }
+      },
+      {
+        $project: {
+          consumption: { $subtract: ["$maxKvarh", "$minKvarh"] }
+        }
+      }
+    ]);
+    const kvarhToday = kvarhStats.reduce((acc, curr) => acc + (curr.consumption || 0), 0) / 1000;
+
+    // 5. Avg Voltage - Average voltage across all phases
+    const avgVoltageStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $group: {
+          _id: null,
+          avg_r_voltage: { $avg: "$r_voltage" },
+          avg_y_voltage: { $avg: "$y_voltage" },
+          avg_b_voltage: { $avg: "$b_voltage" }
+        }
+      }
+    ]);
+    const avgVoltage = avgVoltageStats.length > 0
+      ? ((avgVoltageStats[0].avg_r_voltage || 0) +
+        (avgVoltageStats[0].avg_y_voltage || 0) +
+        (avgVoltageStats[0].avg_b_voltage || 0)) / 3
+      : 0;
+
+    // 6. Avg Current - Average current across all phases
+    const avgCurrentStats = await DeviceParameter.aggregate([
+      { $match: { reading_time: { $gte: startOfPeriod } } },
+      {
+        $group: {
+          _id: null,
+          avg_r_current: { $avg: "$r_current" },
+          avg_y_current: { $avg: "$y_current" },
+          avg_b_current: { $avg: "$b_current" }
+        }
+      }
+    ]);
+    const avgCurrent = avgCurrentStats.length > 0
+      ? ((avgCurrentStats[0].avg_r_current || 0) +
+        (avgCurrentStats[0].avg_y_current || 0) +
+        (avgCurrentStats[0].avg_b_current || 0)) / 3
+      : 0;
+
+    // 7. kW NOW - Current power consumption (latest reading)
+    const latestReading = await DeviceParameter.findOne()
+      .sort({ reading_time: -1 });
+
+    const kwNow = latestReading
+      ? ((latestReading.r_active_power || 0) +
+        (latestReading.y_active_power || 0) +
+        (latestReading.b_active_power || 0)) / 1000
+      : 0;
 
     res.json({
-      total_devices: totalDevices,
-      total_readings: totalReadings,
-      recent_readings: recentReadings,
-      active_devices: activeDevices.length
+      kwh_today: kwhToday,
+      peak_kw_today: peakKwToday,
+      avg_kw_today: avgKwToday,
+      pf_today: pfToday,
+      kvarh_today: kvarhToday,
+      avg_voltage: avgVoltage,
+      avg_current: avgCurrent,
+      kw_now: kwNow
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -225,6 +411,31 @@ router.get('/chart-data', async (req, res) => {
     } else {
       res.status(400).json({ error: 'Invalid chart type' });
     }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get live status (latest reading for each device)
+router.get('/live-status', async (req, res) => {
+  try {
+    const devices = await Device.find();
+
+    // For each device, get the absolute latest reading
+    const liveStatus = await Promise.all(
+      devices.map(async (device) => {
+        // Query for the absolutely latest reading for this device
+        const lastReading = await DeviceParameter.findOne({ device_id: device._id })
+          .sort({ reading_time: -1 });
+
+        return {
+          device: device,
+          reading: lastReading
+        };
+      })
+    );
+
+    res.json(liveStatus);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

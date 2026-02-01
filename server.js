@@ -12,6 +12,9 @@ const externalApiSync = require('./services/externalApiSync');
 // Alert Generator Service
 const alertGenerator = require('./services/alertGenerator');
 
+// Real-time Alert Monitoring Service
+const { startAlertMonitoring } = require('./services/alertScheduler');
+
 // Models
 const User = require('./models/User');
 
@@ -32,6 +35,8 @@ app.use('/api/tasks', auth, require('./routes/tasks'));
 app.use('/api/users', require('./routes/users')); // Internal auth
 app.use('/api/alerts', auth, require('./routes/alerts'));
 app.use('/api/settings', auth, require('./routes/settings'));
+app.use('/api/export', auth, require('./routes/export'));
+app.use('/api/backup', auth, require('./routes/backup'));
 
 // Root Route
 app.get('/', (req, res) => {
@@ -100,6 +105,12 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/iot_dashb
       alertGenerator.start();
     }, 2000); // Wait 2 seconds after server start
 
+    // Start Real-time Alert Monitoring Service
+    console.log('\n🔍 Starting Real-time Alert Monitoring Service...');
+    setTimeout(() => {
+      startAlertMonitoring();
+    }, 3000); // Wait 3 seconds after server start
+
     console.log('\n📡 Ready to receive data at: http://localhost:5000/api/readings');
   })
   .catch((err) => {
@@ -112,3 +123,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
+// Backup and Export features enabled
