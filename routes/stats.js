@@ -408,6 +408,176 @@ router.get('/chart-data', async (req, res) => {
       }));
 
       res.json(formattedTrends);
+    } else if (type === 'current-trends') {
+      // Current trends (last 24 hours, hourly average)
+
+      // Use deviceId if provided, otherwise aggregate all (though usually chart is per device or system total)
+      // If deviceId is not provided, we might want to average across all devices? 
+      // Existing logic for 'power' handled deviceId optional. We should stick to that pattern.
+
+      const matchQuery = { reading_time: { $gte: oneDayAgo } };
+      if (deviceId) {
+        matchQuery.device_id = new mongoose.Types.ObjectId(deviceId);
+      }
+
+      const currentTrends = await DeviceParameter.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$reading_time' },
+              month: { $month: '$reading_time' },
+              day: { $dayOfMonth: '$reading_time' },
+              hour: { $hour: '$reading_time' }
+            },
+            r_current: { $avg: '$r_current' },
+            y_current: { $avg: '$y_current' },
+            b_current: { $avg: '$b_current' }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+      ]);
+
+      res.json(currentTrends.map(item => ({
+        time: `${String(item._id.hour).padStart(2, '0')}:00`,
+        r_current: item.r_current || 0,
+        y_current: item.y_current || 0,
+        b_current: item.b_current || 0
+      })));
+
+    } else if (type === 'pf-trends') {
+      // Power Factor trends
+      const matchQuery = { reading_time: { $gte: oneDayAgo } };
+      if (deviceId) {
+        matchQuery.device_id = new mongoose.Types.ObjectId(deviceId);
+      }
+
+      const pfTrends = await DeviceParameter.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$reading_time' },
+              month: { $month: '$reading_time' },
+              day: { $dayOfMonth: '$reading_time' },
+              hour: { $hour: '$reading_time' }
+            },
+            r_pf: { $avg: '$r_power_factor' },
+            y_pf: { $avg: '$y_power_factor' },
+            b_pf: { $avg: '$b_power_factor' },
+            avg_pf: {
+              $avg: {
+                $divide: [
+                  { $add: [{ $ifNull: ['$r_power_factor', 0] }, { $ifNull: ['$y_power_factor', 0] }, { $ifNull: ['$b_power_factor', 0] }] },
+                  3
+                ]
+              }
+            }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+      ]);
+
+      res.json(pfTrends.map(item => ({
+        time: `${String(item._id.hour).padStart(2, '0')}:00`,
+        r_pf: Math.abs(item.r_pf || 0),
+        y_pf: Math.abs(item.y_pf || 0),
+        b_pf: Math.abs(item.b_pf || 0),
+        avg_pf: Math.abs(item.avg_pf || 0)
+      })));
+
+    } else if (type === 'frequency-trends') {
+      // Frequency trends
+      const matchQuery = { reading_time: { $gte: oneDayAgo } };
+      if (deviceId) {
+        matchQuery.device_id = new mongoose.Types.ObjectId(deviceId);
+      }
+
+      const freqTrends = await DeviceParameter.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$reading_time' },
+              month: { $month: '$reading_time' },
+              day: { $dayOfMonth: '$reading_time' },
+              hour: { $hour: '$reading_time' }
+            },
+            frequency: { $avg: '$frequency' }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+      ]);
+
+      res.json(freqTrends.map(item => ({
+        time: `${String(item._id.hour).padStart(2, '0')}:00`,
+        frequency: item.frequency || 0
+      })));
+
+    } else if (type === 'all-trends') {
+      // Unified trends for Stacked Charts
+      const matchQuery = { reading_time: { $gte: oneDayAgo } };
+      if (deviceId) {
+        matchQuery.device_id = new mongoose.Types.ObjectId(deviceId);
+      }
+
+      const allTrends = await DeviceParameter.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$reading_time' },
+              month: { $month: '$reading_time' },
+              day: { $dayOfMonth: '$reading_time' },
+              hour: { $hour: '$reading_time' }
+            },
+            // Power
+            avg_power: {
+              $avg: {
+                $divide: [
+                  { $add: [{ $ifNull: ['$r_active_power', 0] }, { $ifNull: ['$y_active_power', 0] }, { $ifNull: ['$b_active_power', 0] }] },
+                  1 // Keep in Watts
+                ]
+              }
+            },
+            // Voltage
+            r_voltage: { $avg: '$r_voltage' },
+            y_voltage: { $avg: '$y_voltage' },
+            b_voltage: { $avg: '$b_voltage' },
+            // Current
+            r_current: { $avg: '$r_current' },
+            y_current: { $avg: '$y_current' },
+            b_current: { $avg: '$b_current' },
+            // PF
+            avg_pf: {
+              $avg: {
+                $divide: [
+                  { $add: [{ $ifNull: ['$r_power_factor', 0] }, { $ifNull: ['$y_power_factor', 0] }, { $ifNull: ['$b_power_factor', 0] }] },
+                  3
+                ]
+              }
+            },
+            // Frequency
+            frequency: { $avg: '$frequency' }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+      ]);
+
+      res.json(allTrends.map(item => ({
+        time: `${String(item._id.hour).padStart(2, '0')}:00`,
+        hour: `${String(item._id.hour).padStart(2, '0')}:00`, // Support both keys
+        power: item.avg_power || 0,
+        r_voltage: item.r_voltage || 0,
+        y_voltage: item.y_voltage || 0,
+        b_voltage: item.b_voltage || 0,
+        r_current: item.r_current || 0,
+        y_current: item.y_current || 0,
+        b_current: item.b_current || 0,
+        avg_pf: Math.abs(item.avg_pf || 0),
+        frequency: item.frequency || 0
+      })));
+
     } else {
       res.status(400).json({ error: 'Invalid chart type' });
     }

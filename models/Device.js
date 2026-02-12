@@ -10,6 +10,11 @@ const deviceSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
+  },
+  rated_kVA: {
+    type: Number,
+    default: 100, // Default rated capacity in kVA
+    min: 1
   }
 }, {
   timestamps: true
