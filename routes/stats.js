@@ -4,8 +4,11 @@ const Device = require('../models/Device');
 const DeviceParameter = require('../models/DeviceParameter');
 const mongoose = require('mongoose');
 
-// Get dashboard statistics
-router.get('/dashboard', async (req, res) => {
+// Performance: Cache middleware for reducing database load
+const cache = require('../middleware/cache');
+
+// Get dashboard statistics (cached for 30 seconds)
+router.get('/dashboard', cache(30), async (req, res) => {
   try {
     const period = req.query.period || 'today'; // 'today' or 'month'
 
@@ -270,8 +273,8 @@ router.get('/device-status', async (req, res) => {
   }
 });
 
-// Get chart data for dashboard
-router.get('/chart-data', async (req, res) => {
+// Get chart data for dashboard (cached for 60 seconds)
+router.get('/chart-data', cache(60), async (req, res) => {
   try {
     const { type = 'power', deviceId } = req.query;
     const oneDayAgo = new Date();
@@ -586,8 +589,8 @@ router.get('/chart-data', async (req, res) => {
   }
 });
 
-// Get live status (latest reading for each device)
-router.get('/live-status', async (req, res) => {
+// Get live status (latest reading for each device) - cached for 10 seconds
+router.get('/live-status', cache(10), async (req, res) => {
   try {
     const devices = await Device.find();
 

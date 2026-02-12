@@ -2,9 +2,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const compression = require('compression');
 require('dotenv').config();
 
 const app = express();
+
+// Performance: Enable gzip compression
+app.use(compression());
 
 // External API Sync Service
 const externalApiSync = require('./services/externalApiSync');
@@ -85,31 +89,36 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/iot_dashb
         await admin.save();
         console.log(`👤 Admin user created: ${adminEmail} / ${adminPassword}`);
       } else {
-        // Enforce password update to match request
-        admin.password = hashedPassword;
-        await admin.save();
-        console.log(`✅ Admin password enforced: ${adminEmail} / ${adminPassword}`);
+        console.log(`✅ Admin user already exists: ${adminEmail}`);
       }
     } catch (err) {
       console.error('⚠️ User seeding error:', err);
     }
 
-    // External API Sync Service (enabled with new clean API)
-    console.log('\n🌐 Starting External API Sync (Connecting to Hostinger)...');
-    externalApiSync.start();
+    // Background Services (optional for better performance on free tier)
+    const ENABLE_BACKGROUND_SERVICES = process.env.ENABLE_BACKGROUND_SERVICES === 'true';
 
+    if (ENABLE_BACKGROUND_SERVICES) {
+      // External API Sync Service (enabled with new clean API)
+      console.log('\n🌐 Starting External API Sync (Connecting to Hostinger)...');
+      externalApiSync.start();
 
-    // Start Alert Generator Service
-    console.log('\n🚨 Starting Alert Generator Service...');
-    setTimeout(() => {
-      alertGenerator.start();
-    }, 2000); // Wait 2 seconds after server start
+      // Start Alert Generator Service
+      console.log('\n🚨 Starting Alert Generator Service...');
+      setTimeout(() => {
+        alertGenerator.start();
+      }, 2000); // Wait 2 seconds after server start
 
-    // Start Real-time Alert Monitoring Service
-    console.log('\n🔍 Starting Real-time Alert Monitoring Service...');
-    setTimeout(() => {
-      startAlertMonitoring();
-    }, 3000); // Wait 3 seconds after server start
+      // Start Real-time Alert Monitoring Service
+      console.log('\n🔍 Starting Real-time Alert Monitoring Service...');
+      setTimeout(() => {
+        startAlertMonitoring();
+      }, 3000); // Wait 3 seconds after server start
+    } else {
+      console.log('\n⚠️  Background services DISABLED');
+      console.log('💡 Set ENABLE_BACKGROUND_SERVICES=true to enable external sync, alerts, and monitoring');
+      console.log('💡 This improves performance on free hosting tiers');
+    }
 
     console.log('\n📡 Ready to receive data at: http://localhost:5000/api/readings');
   })
