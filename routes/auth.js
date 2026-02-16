@@ -23,9 +23,14 @@ router.get('/me', auth, async (req, res) => {
 // @access  Public
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
     try {
-        let user = await User.findOne({ email });
+        if (!normalizedEmail || !password) {
+            return res.status(400).json({ msg: 'Email and password are required' });
+        }
+
+        let user = await User.findOne({ email: normalizedEmail });
 
         if (!user) {
             return res.status(400).json({ msg: 'Invalid Credentials' });

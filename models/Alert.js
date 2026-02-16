@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendDashboardAlertWhatsapp } = require('../services/whatsappNotifier');
 
 const alertSchema = new mongoose.Schema({
     device_id: {
@@ -9,7 +10,19 @@ const alertSchema = new mongoose.Schema({
     },
     alert_type: {
         type: String,
-        enum: ['over_voltage', 'under_voltage', 'over_current', 'low_power_factor', 'device_offline', 'system_info'],
+        enum: [
+            'over_voltage',
+            'under_voltage',
+            'over_current',
+            'low_power_factor',
+            'device_offline',
+            'system_info',
+            'current_imbalance',
+            'phase_loss',
+            'voltage_imbalance',
+            'frequency_deviation',
+            'high_temperature'
+        ],
         required: true
     },
     severity: {
@@ -52,5 +65,21 @@ alertSchema.index({ device_id: 1, createdAt: -1 });
 alertSchema.index({ severity: 1, resolved: 1 });
 alertSchema.index({ alert_type: 1 });
 alertSchema.index({ createdAt: -1 });
+
+// Track whether this document is newly created so WhatsApp triggers only once.
+alertSchema.pre('save', function (next) {
+    this.$locals.wasNew = this.isNew;
+    next();
+});
+
+alertSchema.post('save', function (doc) {
+    if (!this.$locals?.wasNew) return;
+
+    setImmediate(() => {
+        sendDashboardAlertWhatsapp(doc).catch((error) => {
+            console.error('Error sending WhatsApp alert:', error.message);
+        });
+    });
+});
 
 module.exports = mongoose.model('Alert', alertSchema);
