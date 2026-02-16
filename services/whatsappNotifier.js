@@ -3,6 +3,7 @@ const path = require('path');
 const Device = require('../models/Device');
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const debugMode = TRUE_VALUES.has(String(process.env.WHATSAPP_DEBUG || '').toLowerCase());
 
 function isWhatsappAlertsEnabled() {
     return TRUE_VALUES.has(String(process.env.WHATSAPP_ALERTS_ENABLED || '').toLowerCase());
@@ -43,8 +44,14 @@ function formatAlertText(alert, deviceName) {
 }
 
 async function sendDashboardAlertWhatsapp(alertDoc) {
-    if (!isWhatsappAlertsEnabled()) return;
-    if (!alertDoc || alertDoc.resolved) return;
+    if (!isWhatsappAlertsEnabled()) {
+        if (debugMode) console.log('[whatsapp] Skipped: WHATSAPP_ALERTS_ENABLED is false');
+        return;
+    }
+    if (!alertDoc || alertDoc.resolved) {
+        if (debugMode) console.log('[whatsapp] Skipped: empty/resolved alert');
+        return;
+    }
 
     const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
     const scriptPath = path.join(__dirname, '..', 'messege.py');
@@ -62,6 +69,10 @@ async function sendDashboardAlertWhatsapp(alertDoc) {
         '--template',
         templateName
     ];
+
+    if (debugMode) {
+        console.log(`[whatsapp] Executing: ${pythonBin} ${args.join(' ')}`);
+    }
 
     const child = spawn(pythonBin, args, {
         cwd: path.join(__dirname, '..'),

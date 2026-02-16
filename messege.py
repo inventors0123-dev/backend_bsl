@@ -30,6 +30,7 @@ PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
 MY_NUMBER = os.getenv("WHATSAPP_TO_NUMBER", "")
 WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v17.0")
 DEFAULT_ALERT_TEMPLATE = os.getenv("WHATSAPP_ALERT_TEMPLATE", "factory_alert")
+WHATSAPP_DEBUG = os.getenv("WHATSAPP_DEBUG", "false").strip().lower() in ("1", "true", "yes", "on")
 
 # 4. Factory Logic Settings
 THRESHOLD_CURRENT = float(os.getenv("FACTORY_THRESHOLD_CURRENT", "15.0"))
@@ -74,6 +75,33 @@ def _http_get_json(url, timeout=10):
 
 # ================= FUNCTIONS =================
 
+def _is_digits_only(value):
+    return bool(value) and value.isdigit()
+
+
+def validate_whatsapp_config():
+    errors = []
+    warnings = []
+
+    if not TOKEN:
+        errors.append("WHATSAPP_TOKEN is missing.")
+    if not PHONE_ID:
+        errors.append("WHATSAPP_PHONE_ID is missing.")
+    if not MY_NUMBER:
+        errors.append("WHATSAPP_TO_NUMBER is missing.")
+    if not DEFAULT_ALERT_TEMPLATE:
+        errors.append("WHATSAPP_ALERT_TEMPLATE is missing.")
+
+    if PHONE_ID and not _is_digits_only(PHONE_ID):
+        errors.append("WHATSAPP_PHONE_ID must be numeric Phone Number ID (no +, no spaces).")
+    if MY_NUMBER and not _is_digits_only(MY_NUMBER):
+        errors.append("WHATSAPP_TO_NUMBER must be digits only (example: 919876543210).")
+
+    if WHATSAPP_API_VERSION and not WHATSAPP_API_VERSION.startswith("v"):
+        warnings.append("WHATSAPP_API_VERSION should look like v17.0 or v21.0.")
+
+    return errors, warnings
+
 def get_db_connection():
     try:
         import mysql.connector
@@ -111,6 +139,11 @@ def send_whatsapp(template_name, variables):
     }
 
     try:
+        if WHATSAPP_DEBUG:
+            print(f"DEBUG WhatsApp URL: {url}")
+            print(f"DEBUG Template: {template_name}")
+            print(f"DEBUG To: {MY_NUMBER}")
+
         status_code, response_text = _http_post_json(url, payload, headers)
         if 200 <= status_code < 300:
             print(f"WhatsApp template '{template_name}' sent successfully.")
@@ -206,6 +239,22 @@ def send_dashboard_alert_once(alert_text, template_name=None):
     return send_whatsapp(chosen_template, [alert_text])
 
 
+def run_config_validation():
+    errors, warnings = validate_whatsapp_config()
+
+    print("WhatsApp config validation:")
+    if not errors and not warnings:
+        print("OK: configuration looks valid.")
+        return 0
+
+    for item in warnings:
+        print(f"WARNING: {item}")
+    for item in errors:
+        print(f"ERROR: {item}")
+
+    return 1 if errors else 0
+
+
 # ================= RUNTIME MODES =================
 
 def run_scheduler():
@@ -233,7 +282,7 @@ def main():
     parser = argparse.ArgumentParser(description="IoT WhatsApp notifier bridge")
     parser.add_argument(
         "--mode",
-        choices=["scheduler", "dashboard-alert"],
+        choices=["scheduler", "dashboard-alert", "validate-config"],
         default="scheduler",
         help="Use 'dashboard-alert' for one-time sends from Node backend."
     )
@@ -246,6 +295,9 @@ def main():
             print("Missing --alert-text for dashboard-alert mode.")
             return 1
         return 0 if send_dashboard_alert_once(args.alert_text, args.template) else 1
+
+    if args.mode == "validate-config":
+        return run_config_validation()
 
     return run_scheduler()
 

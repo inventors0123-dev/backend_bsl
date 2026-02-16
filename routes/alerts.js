@@ -88,6 +88,50 @@ router.get('/counts', async (req, res) => {
     }
 });
 
+// Create a WhatsApp test alert from dashboard
+router.post('/test-whatsapp', async (req, res) => {
+    try {
+        const { device_id, message, severity = 'info' } = req.body || {};
+
+        const allowedSeverities = new Set(['critical', 'warning', 'info']);
+        const finalSeverity = allowedSeverities.has(severity) ? severity : 'info';
+
+        // Use selected device if provided, otherwise use the first available device.
+        let device = null;
+        if (device_id) {
+            device = await Device.findById(device_id);
+        }
+        if (!device) {
+            device = await Device.findOne().sort({ createdAt: 1 });
+        }
+
+        if (!device) {
+            return res.status(400).json({ error: 'No device found. Please create a device first.' });
+        }
+
+        const alertMessage = message || `WhatsApp test alert from dashboard at ${new Date().toLocaleString()}`;
+
+        const alert = new Alert({
+            device_id: device._id,
+            alert_type: 'system_info',
+            severity: finalSeverity,
+            message: alertMessage,
+            resolved: false
+        });
+
+        await alert.save();
+        await alert.populate('device_id', 'name location');
+
+        res.status(201).json({
+            message: 'Test alert created. Check WhatsApp and backend logs.',
+            alert
+        });
+    } catch (error) {
+        console.error('Error creating WhatsApp test alert:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Get single alert
 router.get('/:id', async (req, res) => {
     try {
