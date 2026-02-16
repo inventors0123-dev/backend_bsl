@@ -31,6 +31,7 @@ PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
 MY_NUMBER = os.getenv("WHATSAPP_TO_NUMBER", "")
 WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v17.0")
 DEFAULT_ALERT_TEMPLATE = os.getenv("WHATSAPP_ALERT_TEMPLATE", "factory_alert")
+WHATSAPP_TEMPLATE_LANG = os.getenv("WHATSAPP_TEMPLATE_LANG", "en_US")
 WHATSAPP_DEBUG = os.getenv("WHATSAPP_DEBUG", "false").strip().lower() in ("1", "true", "yes", "on")
 
 # 4. Factory Logic Settings
@@ -133,22 +134,27 @@ def send_whatsapp(template_name, variables):
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": MY_NUMBER,
-        "type": "template",
-        "template": {
+    def build_payload(include_params):
+        template = {
             "name": template_name,
-            "language": {"code": "en_US"},
-            "components": [{
+            "language": {"code": WHATSAPP_TEMPLATE_LANG}
+        }
+
+        if include_params:
+            template["components"] = [{
                 "type": "body",
                 "parameters": [
                     {"type": "text", "text": _sanitize_template_text(var)}
                     for var in variables
                 ]
             }]
+
+        return {
+            "messaging_product": "whatsapp",
+            "to": MY_NUMBER,
+            "type": "template",
+            "template": template
         }
-    }
 
     try:
         if WHATSAPP_DEBUG:
@@ -156,10 +162,30 @@ def send_whatsapp(template_name, variables):
             print(f"DEBUG Template: {template_name}")
             print(f"DEBUG To: {MY_NUMBER}")
 
+        payload = build_payload(include_params=True)
         status_code, response_text = _http_post_json(url, payload, headers)
         if 200 <= status_code < 300:
             print(f"WhatsApp template '{template_name}' sent successfully.")
             return True
+
+        # Auto-fix: if template expects 0 params, retry without body params.
+        error_code = None
+        details = ""
+        try:
+            parsed = json.loads(response_text)
+            err = parsed.get("error", {})
+            error_code = err.get("code")
+            details = str(err.get("error_data", {}).get("details", ""))
+        except Exception:
+            pass
+
+        if error_code == 132000 and "expected number of params (0)" in details:
+            print("Template expects 0 params. Retrying without template variables...")
+            payload_no_params = build_payload(include_params=False)
+            status_code, response_text = _http_post_json(url, payload_no_params, headers)
+            if 200 <= status_code < 300:
+                print(f"WhatsApp template '{template_name}' sent successfully (no params).")
+                return True
 
         print(f"WhatsApp error {status_code}: {response_text}")
         return False
