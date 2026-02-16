@@ -40,7 +40,8 @@ function formatAlertText(alert, deviceName) {
         lines.push(`Time: ${new Date(alert.createdAt).toISOString()}`);
     }
 
-    return lines.join('\n');
+    // Keep a single-line text because WhatsApp template params reject new lines.
+    return lines.join(' | ');
 }
 
 async function sendDashboardAlertWhatsapp(alertDoc) {

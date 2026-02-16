@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import time
 from datetime import date, datetime
 from urllib.error import HTTPError, URLError
@@ -79,6 +80,14 @@ def _is_digits_only(value):
     return bool(value) and value.isdigit()
 
 
+def _sanitize_template_text(value):
+    # WhatsApp template params cannot contain new lines/tabs or long space runs.
+    text = str(value)
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
 def validate_whatsapp_config():
     errors = []
     warnings = []
@@ -133,7 +142,10 @@ def send_whatsapp(template_name, variables):
             "language": {"code": "en_US"},
             "components": [{
                 "type": "body",
-                "parameters": [{"type": "text", "text": str(var)} for var in variables]
+                "parameters": [
+                    {"type": "text", "text": _sanitize_template_text(var)}
+                    for var in variables
+                ]
             }]
         }
     }
