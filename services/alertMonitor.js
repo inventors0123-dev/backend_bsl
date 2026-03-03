@@ -91,14 +91,14 @@ const ALERT_CONFIGS = {
 
     // Low Power Factor
     LOW_PF_WARNING: {
-        threshold: 0.85,
+        threshold: 0.95,
         duration: 600000, // 10 minutes
         severity: 'warning',
         type: 'low_power_factor'
     },
     LOW_PF_CRITICAL: {
-        threshold: 0.75,
-        duration: 300000, // 5 minutes
+        threshold: 0.95,
+        duration: 60000, // 1 minute
         severity: 'critical',
         type: 'low_power_factor'
     },
@@ -481,26 +481,17 @@ async function monitorDevice(device, settings) {
         const totalKva = (latestReading.r_apparent_power || 0) +
             (latestReading.y_apparent_power || 0) +
             (latestReading.b_apparent_power || 0);
-        const pf = totalKva > 0 ? totalKw / totalKva : 1;
+        const pf = totalKva > 0 ? Math.abs(totalKw / totalKva) : 1;
+        const pfMinThreshold = Math.max(settings?.pf_min || 0, ALERT_CONFIGS.LOW_PF_CRITICAL.threshold);
 
-        if (checkAlertCondition('LOW_PF_CRITICAL', device._id, pf < 0.75)) {
+        if (checkAlertCondition('LOW_PF_CRITICAL', device._id, pf < pfMinThreshold)) {
             await createAlert(
                 device,
                 'low_power_factor',
                 'critical',
-                `Power factor critically low: ${pf.toFixed(2)} (limit 0.75)`,
+                `Power factor critically low: ${pf.toFixed(2)} (limit ${pfMinThreshold.toFixed(2)})`,
                 pf,
-                0.75,
-                latestReading
-            );
-        } else if (checkAlertCondition('LOW_PF_WARNING', device._id, pf < 0.85 && pf >= 0.75)) {
-            await createAlert(
-                device,
-                'low_power_factor',
-                'warning',
-                `Power factor low: ${pf.toFixed(2)} (limit 0.85)`,
-                pf,
-                0.85,
+                pfMinThreshold,
                 latestReading
             );
         }

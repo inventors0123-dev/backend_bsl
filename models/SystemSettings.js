@@ -26,7 +26,7 @@ const systemSettingsSchema = new mongoose.Schema({
     // Power Factor Threshold
     pf_min: {
         type: Number,
-        default: 0.90,
+        default: 0.95,
         min: 0.5,
         max: 1.0
     },

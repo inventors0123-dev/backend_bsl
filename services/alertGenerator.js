@@ -246,23 +246,26 @@ class AlertGenerator {
         const pf = reading[field];
         if (pf === undefined || pf === null) return;
 
+        const pfValue = Math.abs(pf);
+        const pfThreshold = Math.max(settings?.pf_min || 0, 0.95);
+
         const deviceId = reading.device_id._id;
         const deviceName = reading.device_id.name;
 
-        if (pf < settings.pf_min) {
+        if (pfValue < pfThreshold) {
             const existingAlert = await this.findRecentAlert(deviceId, 'low_power_factor', 10); // 10 min window
 
             if (!existingAlert) {
                 await Alert.create({
                     device_id: deviceId,
                     alert_type: 'low_power_factor',
-                    severity: 'warning',
-                    message: `Phase ${phase} power factor below minimum (${pf.toFixed(3)} < ${settings.pf_min})`,
-                    value: pf,
-                    threshold: settings.pf_min,
+                    severity: 'critical',
+                    message: `Phase ${phase} power factor critically low (${pfValue.toFixed(3)} < ${pfThreshold.toFixed(2)})`,
+                    value: pfValue,
+                    threshold: pfThreshold,
                     reading_id: reading._id
                 });
-                console.log(`⚠️  Alert: ${deviceName} - Low Power Factor on Phase ${phase}`);
+                console.log(`🚨 Alert: ${deviceName} - Low Power Factor on Phase ${phase}`);
             }
         }
     }
