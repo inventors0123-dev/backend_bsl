@@ -6,9 +6,10 @@ const mongoose = require('mongoose');
 
 // Performance: Cache middleware for reducing database load
 const cache = require('../middleware/cache');
+const onDemandExternalSync = require('../middleware/externalSync');
 
 // Get dashboard statistics (cached for 30 seconds)
-router.get('/dashboard', cache(30), async (req, res) => {
+router.get('/dashboard', onDemandExternalSync, cache(30), async (req, res) => {
   try {
     const period = req.query.period || 'today'; // 'today' or 'month'
 
@@ -225,7 +226,7 @@ router.get('/dashboard', cache(30), async (req, res) => {
 });
 
 // Get recent readings for dashboard
-router.get('/recent-readings', async (req, res) => {
+router.get('/recent-readings', onDemandExternalSync, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
 
@@ -274,7 +275,7 @@ router.get('/device-status', async (req, res) => {
 });
 
 // Get chart data for dashboard (cached for 60 seconds)
-router.get('/chart-data', cache(60), async (req, res) => {
+router.get('/chart-data', onDemandExternalSync, cache(60), async (req, res) => {
   try {
     const { type = 'power', deviceId } = req.query;
     const oneDayAgo = new Date();
@@ -598,7 +599,7 @@ router.get('/chart-data', cache(60), async (req, res) => {
 });
 
 // Get live status (latest reading for each device) - cached for 10 seconds
-router.get('/live-status', cache(10), async (req, res) => {
+router.get('/live-status', onDemandExternalSync, cache(10), async (req, res) => {
   try {
     const devices = await Device.find();
 

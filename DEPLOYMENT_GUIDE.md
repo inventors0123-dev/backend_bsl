@@ -40,6 +40,9 @@ In your Render dashboard, add these environment variables:
 | `PORT` | `5000` | Or use Render's default |
 | `EXTERNAL_API_URL` | `https://your-api.com/endpoint` | If using external sync |
 | `POLL_INTERVAL` | `120000` | 2 minutes (if background services enabled) |
+| `ENABLE_ON_DEMAND_EXTERNAL_SYNC` | `true` | Pulls fresh Hostinger readings when dashboard/readings pages are opened |
+| `ON_DEMAND_SYNC_MAX_STALENESS_MS` | `60000` | Triggers one-shot sync if latest reading is older than this |
+| `ON_DEMAND_SYNC_MIN_INTERVAL_MS` | `30000` | Prevents repeated one-shot syncs on every refresh |
 
 ### 4. Deploy to Render 🌐
 

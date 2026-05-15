@@ -11,6 +11,7 @@ const DeviceParameter = require('../models/DeviceParameter');
 const EXTERNAL_API_URL = process.env.EXTERNAL_API_URL || 'https://darksalmon-crow-640021.hostingersite.com/api_get_readings.php';
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL, 10) || 30000;
 const AUTO_REGISTER_EXTERNAL_MACS = String(process.env.AUTO_REGISTER_EXTERNAL_MACS || 'true').toLowerCase() === 'true';
+const ON_DEMAND_SYNC_ENABLED = String(process.env.ENABLE_ON_DEMAND_EXTERNAL_SYNC || 'true').toLowerCase() !== 'false';
 
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -22,6 +23,9 @@ class ExternalApiSync {
         this.errorCount = 0;
         this.successCount = 0;
         this.unmappedMacWarnings = new Set();
+        this.inFlightSync = null;
+        this.lastOnDemandAttemptAt = null;
+        this.lastOnDemandResult = null;
     }
 
     start() {
@@ -34,10 +38,10 @@ class ExternalApiSync {
         console.log(`Polling: ${EXTERNAL_API_URL}`);
 
         this.isRunning = true;
-        this.fetchAndStore();
+        this.fetchAndStore('scheduled');
 
         this.intervalId = setInterval(() => {
-            this.fetchAndStore();
+            this.fetchAndStore('scheduled');
         }, POLL_INTERVAL);
     }
 
@@ -50,9 +54,9 @@ class ExternalApiSync {
         console.log('External API sync service stopped');
     }
 
-    async fetchAndStore() {
+    async fetchAndStore(reason = 'manual') {
         try {
-            console.log(`\n[${new Date().toISOString()}] Fetching data from external API...`);
+            console.log(`\n[${new Date().toISOString()}] Fetching data from external API (${reason})...`);
 
             const response = await axios.get(EXTERNAL_API_URL, {
                 timeout: 10000,
@@ -64,19 +68,41 @@ class ExternalApiSync {
                 if (response.data && response.data.message) {
                     console.error('API Error:', response.data.message);
                 }
-                return;
+                return {
+                    success: false,
+                    reason,
+                    storedCount: 0,
+                    duplicateCount: 0,
+                    unmappedMacCount: 0,
+                    skippedCount: 0,
+                    error: response.data?.message || 'API returned no data'
+                };
             }
 
             const readings = response.data.data || [];
             console.log(`Received ${readings.length} readings from external API`);
 
+            let summary = {
+                success: true,
+                reason,
+                receivedCount: readings.length,
+                storedCount: 0,
+                duplicateCount: 0,
+                unmappedMacCount: 0,
+                skippedCount: 0
+            };
+
             if (readings.length > 0) {
-                await this.processData(readings);
+                summary = {
+                    ...summary,
+                    ...(await this.processData(readings))
+                };
             }
 
             this.lastSyncTime = new Date();
             this.successCount += 1;
             this.errorCount = 0;
+            return summary;
         } catch (error) {
             this.errorCount += 1;
             console.error('Sync error:', error.message);
@@ -85,6 +111,16 @@ class ExternalApiSync {
                 console.error('Too many errors. Stopping sync service.');
                 this.stop();
             }
+
+            return {
+                success: false,
+                reason,
+                storedCount: 0,
+                duplicateCount: 0,
+                unmappedMacCount: 0,
+                skippedCount: 0,
+                error: error.message
+            };
         }
     }
 
@@ -116,6 +152,64 @@ class ExternalApiSync {
         console.log(
             `Sync summary: stored=${storedCount}, duplicate=${duplicateCount}, unmapped_mac=${unmappedMacCount}, skipped=${skippedCount}`
         );
+
+        return {
+            storedCount,
+            duplicateCount,
+            unmappedMacCount,
+            skippedCount
+        };
+    }
+
+    async syncOnceIfStale(options = {}) {
+        if (!ON_DEMAND_SYNC_ENABLED) {
+            return { skipped: true, reason: 'on_demand_sync_disabled' };
+        }
+
+        const maxAgeMs = Number(options.maxAgeMs) || Math.max(POLL_INTERVAL * 2, 60000);
+        const minIntervalMs = Number(options.minIntervalMs) || Math.min(POLL_INTERVAL, 30000);
+        const now = Date.now();
+
+        if (this.inFlightSync) {
+            return this.inFlightSync;
+        }
+
+        if (this.lastOnDemandAttemptAt && now - this.lastOnDemandAttemptAt.getTime() < minIntervalMs) {
+            return {
+                skipped: true,
+                reason: 'recent_on_demand_attempt',
+                lastAttemptAt: this.lastOnDemandAttemptAt,
+                lastResult: this.lastOnDemandResult
+            };
+        }
+
+        const latestReading = await DeviceParameter.findOne()
+            .sort({ reading_time: -1 })
+            .select('reading_time')
+            .lean();
+
+        if (latestReading?.reading_time) {
+            const latestTime = new Date(latestReading.reading_time).getTime();
+            if (!Number.isNaN(latestTime) && now - latestTime < maxAgeMs) {
+                return {
+                    skipped: true,
+                    reason: 'readings_fresh',
+                    latestReadingTime: latestReading.reading_time
+                };
+            }
+        }
+
+        this.lastOnDemandAttemptAt = new Date(now);
+        this.inFlightSync = this.fetchAndStore('on-demand')
+            .then((result) => {
+                this.lastOnDemandResult = result;
+                return result;
+            })
+            .finally(() => {
+                this.inFlightSync = null;
+            });
+
+        return this.inFlightSync;
     }
 
     async storeReading(reading) {
@@ -285,7 +379,10 @@ class ExternalApiSync {
             isRunning: this.isRunning,
             lastSyncTime: this.lastSyncTime,
             successCount: this.successCount,
-            errorCount: this.errorCount
+            errorCount: this.errorCount,
+            onDemandSyncEnabled: ON_DEMAND_SYNC_ENABLED,
+            lastOnDemandAttemptAt: this.lastOnDemandAttemptAt,
+            lastOnDemandResult: this.lastOnDemandResult
         };
     }
 }

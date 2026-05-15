@@ -4,6 +4,7 @@ const DeviceParameter = require('../models/DeviceParameter');
 const Device = require('../models/Device');
 const DeviceMacAddress = require('../models/DeviceMacAddress');
 const auth = require('../middleware/auth');
+const onDemandExternalSync = require('../middleware/externalSync');
 const XLSX = require('xlsx');
 
 // Export all readings to Excel
@@ -100,7 +101,7 @@ router.get('/export', auth, async (req, res) => {
 });
 
 // Get all readings with filters and pagination
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, onDemandExternalSync, async (req, res) => {
     try {
         const {
             search,
