@@ -38,6 +38,7 @@ In your Render dashboard, add these environment variables:
 | `JWT_SECRET` | `your_jwt_secret` | Generate with: `node generate-jwt-secret.js` |
 | `ENABLE_BACKGROUND_SERVICES` | `false` | **Set to `false` for free tier!** |
 | `PORT` | `5000` | Or use Render's default |
+| `CORS_ORIGINS` | `https://bsl-admin.vercel.app` | Add comma-separated frontend domains if needed |
 | `EXTERNAL_API_URL` | `https://your-api.com/endpoint` | If using external sync |
 | `POLL_INTERVAL` | `120000` | 2 minutes (if background services enabled) |
 | `ENABLE_ON_DEMAND_EXTERNAL_SYNC` | `true` | Pulls fresh Hostinger readings when dashboard/readings pages are opened |

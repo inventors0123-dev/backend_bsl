@@ -7,6 +7,41 @@ require('dotenv').config();
 
 const app = express();
 
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://localhost:3000',
+  'https://bsl-admin.vercel.app',
+  'https://lumina-dashboard-git-main-sahilshaikh7454-gmailcoms-projects.vercel.app'
+];
+
+const configuredAllowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = new Set([
+  ...defaultAllowedOrigins,
+  ...configuredAllowedOrigins
+]);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has('*') || allowedOrigins.has(origin) || /^https:\/\/.*\.vercel\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204
+};
+
+// CORS must run before routes and preflight must be answered before auth middleware.
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 // Performance: Enable gzip compression
 app.use(compression());
 
@@ -23,7 +58,6 @@ const { startAlertMonitoring } = require('./services/alertScheduler');
 const User = require('./models/User');
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
