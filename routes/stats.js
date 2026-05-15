@@ -524,6 +524,8 @@ router.get('/chart-data', cache(60), async (req, res) => {
         matchQuery.device_id = new mongoose.Types.ObjectId(deviceId);
       }
 
+      const bucketSizeMinutes = 5;
+
       const allTrends = await DeviceParameter.aggregate([
         { $match: matchQuery },
         {
@@ -532,7 +534,13 @@ router.get('/chart-data', cache(60), async (req, res) => {
               year: { $year: '$reading_time' },
               month: { $month: '$reading_time' },
               day: { $dayOfMonth: '$reading_time' },
-              hour: { $hour: '$reading_time' }
+              hour: { $hour: '$reading_time' },
+              minute: {
+                $subtract: [
+                  { $minute: '$reading_time' },
+                  { $mod: [{ $minute: '$reading_time' }, bucketSizeMinutes] }
+                ]
+              }
             },
             // Power
             avg_power: {
@@ -564,12 +572,12 @@ router.get('/chart-data', cache(60), async (req, res) => {
             frequency: { $avg: '$frequency' }
           }
         },
-        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1, '_id.minute': 1 } }
       ]);
 
       res.json(allTrends.map(item => ({
-        time: `${String(item._id.hour).padStart(2, '0')}:00`,
-        hour: `${String(item._id.hour).padStart(2, '0')}:00`, // Support both keys
+        time: `${String(item._id.hour).padStart(2, '0')}:${String(item._id.minute).padStart(2, '0')}`,
+        hour: `${String(item._id.hour).padStart(2, '0')}:${String(item._id.minute).padStart(2, '0')}`, // Support both keys
         power: item.avg_power || 0,
         r_voltage: item.r_voltage || 0,
         y_voltage: item.y_voltage || 0,
